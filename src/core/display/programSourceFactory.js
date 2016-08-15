@@ -27,6 +27,7 @@ var SceneJS_ProgramSourceFactory = new (function () {
     var regionInteraction;
     var depthTargeting;
     var points;
+    var quantizedPositions;
 
     var src = ""; // Accumulates source code as it's being built
 
@@ -63,6 +64,7 @@ var SceneJS_ProgramSourceFactory = new (function () {
         regionInteraction = regionMapping && states.regionMap.mode !== "info";
         depthTargeting = hasDepthTarget();
         points = states.geometry.primitiveName === "points";
+        quantizedPositions = !!states.geometry.decodePositions;
 
         source = new SceneJS_ProgramSource(
             hash,
@@ -106,6 +108,10 @@ var SceneJS_ProgramSourceFactory = new (function () {
             add("uniform float SCENEJS_uPointSize;");
         }
 
+        if (quantizedPositions) {
+            add("uniform mat4 SCENEJS_uDecodePositionMatrix;");
+        }
+
         add("varying vec4 SCENEJS_vWorldVertex;");
 
         if (regionMapping) {
@@ -125,6 +131,10 @@ var SceneJS_ProgramSourceFactory = new (function () {
         add("void main(void) {");
 
         add("   vec4 tmpVertex=vec4(SCENEJS_aVertex, 1.0); ");
+
+        if (quantizedPositions) {
+            add("    tmpVertex = SCENEJS_uDecodePositionMatrix * tmpVertex;");
+        }
 
         if (morphing) {
             if (states.morphGeometry.targets[0].vertexBuf) {
@@ -315,6 +325,10 @@ var SceneJS_ProgramSourceFactory = new (function () {
             add("uniform float SCENEJS_uPointSize;");
         }
 
+        if (quantizedPositions) {
+            add("uniform mat4 SCENEJS_uDecodePositionMatrix;");
+        }
+
         if (normals) {
 
             add("attribute vec3 SCENEJS_aNormal;");        // Normal vectors
@@ -423,6 +437,10 @@ var SceneJS_ProgramSourceFactory = new (function () {
         }
 
         add("  vec4 tmpVertex=vec4(SCENEJS_aVertex, 1.0); ");
+
+        if (quantizedPositions) {
+            add("    tmpVertex = SCENEJS_uDecodePositionMatrix * tmpVertex;");
+        }
 
         add("  vec4 modelVertex = tmpVertex; ");
 

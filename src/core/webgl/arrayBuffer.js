@@ -9,7 +9,7 @@
  * @param usage    Eg. STATIC_DRAW
  */
 
-SceneJS._webgl.ArrayBuffer = function (gl, type, values, numItems, itemSize, usage) {
+SceneJS._webgl.ArrayBuffer = function (gl, type, values, numItems, itemSize, usage, normalize) {
 
     /**
      * True when this buffer is allocated and ready to go
@@ -28,6 +28,7 @@ SceneJS._webgl.ArrayBuffer = function (gl, type, values, numItems, itemSize, usa
     this.numItems = numItems;
     this.itemSize = itemSize;
     this.usage = usage;
+    this.normalize = !!normalize;
     this._allocate(values, numItems);
 };
 

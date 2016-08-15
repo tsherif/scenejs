@@ -10,7 +10,7 @@ SceneJS._webgl.Attribute = function (gl, program, name, type, size, location) {
         if (buffer) {
             buffer.bind();
             gl.enableVertexAttribArray(location);
-            gl.vertexAttribPointer(location, buffer.itemSize, gl.FLOAT, false, 0, 0);   // Vertices are not homogeneous - no w-element
+            gl.vertexAttribPointer(location, buffer.itemSize, buffer.itemType, false, 0, 0);   // Vertices are not homogeneous - no w-element
         }
     };
 };

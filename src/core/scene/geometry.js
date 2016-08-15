@@ -78,7 +78,17 @@ new (function () {
         // Create typed arrays, apply any baked transforms
         core.arrays = {};
 
-        if (data.positions) {
+        if (data.quantizedPositions) {
+            if (data.quantizedPositions.constructor != Uint16Array) {
+                data.quantizedPositions = new Uint16Array(data.quantizedPositions);
+            }
+
+            core.arrays.quantizedPositions = data.quantizedPositions;
+            this._engine.stats.memory.quantizedPositions += data.quantizedPositions.length / 3;
+
+            core.decodePositions = data.decodePositions;
+            core.compressed = true;
+        } else if (data.positions) {
             if (data.positions.constructor != Float32Array) {
                 data.positions = new Float32Array(data.positions);
             }
@@ -91,7 +101,10 @@ new (function () {
             this._engine.stats.memory.positions += data.positions.length / 3;
         }
 
-        if (data.normals) {
+        if (data.octNormals) {
+
+            core.compressed = true;
+        } else if (data.normals) {
             if (data.normals.constructor != Float32Array) {
                 data.normals = new Float32Array(data.normals);
             }
@@ -100,7 +113,10 @@ new (function () {
             this._engine.stats.memory.normals += data.normals.length / 3;
         }
 
-        if (data.uvs) {
+        if (data.quantizedUVs) {
+
+            core.compressed = true;
+        } else if (data.uvs) {
             var uvs = data.uvs;
             var uv;
             for (var i = 0, len = uvs.length; i < len; i++) {
@@ -812,7 +828,7 @@ new (function () {
     function buildCore(gl, core) {
         var usage = gl.STATIC_DRAW;
         var arrays = core.arrays;
-        var canInterleave = (SceneJS.getConfigs("enableInterleaving") !== false);
+        var canInterleave = !core.compressed && (SceneJS.getConfigs("enableInterleaving") !== false);
         var dataLength = 0;
         var interleavedValues = 0;
         var interleavedArrays = [];
@@ -830,21 +846,27 @@ new (function () {
             return (interleavedValues - strideInElements) * 4;
         };
 
-        if (arrays.positions) {
+        if (arrays.quantizedPositions) {
+            core.vertexBuf = new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, arrays.quantizedPositions, arrays.quantizedPositions.length, 3, usage);
+        } else if (arrays.positions) {
             if (canInterleave) {
                 core.interleavedPositionOffset = prepareInterleaveBuffer(arrays.positions, 3);
             }
             core.vertexBuf = new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, arrays.positions, arrays.positions.length, 3, usage);
         }
 
-        if (arrays.normals) {
+        if (arrays.octNormals) {
+
+        } else if (arrays.normals) {
             if (canInterleave) {
                 core.interleavedNormalOffset = prepareInterleaveBuffer(arrays.normals, 3);
             }
             core.normalBuf = new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, arrays.normals, arrays.normals.length, 3, usage);
         }
 
-        if (arrays.uvs) {
+        if (arrays.quantizedUVs) {
+
+        } else if (arrays.uvs) {
 
             var uvs = arrays.uvs;
             var offsets;

@@ -4,7 +4,7 @@
  * A WebGL-based 3D scene graph from xeoLabs
  * http://scenejs.org/
  *
- * Built on 2016-08-02
+ * Built on 2016-08-15
  *
  * MIT License
  * Copyright 2016, Lindsay Kay
@@ -5826,7 +5826,7 @@ var SceneJS_sceneStatusModule = new (function () {
  * @param usage    Eg. STATIC_DRAW
  */
 
-SceneJS._webgl.ArrayBuffer = function (gl, type, values, numItems, itemSize, usage) {
+SceneJS._webgl.ArrayBuffer = function (gl, type, values, numItems, itemSize, usage, normalize) {
 
     /**
      * True when this buffer is allocated and ready to go
@@ -5845,6 +5845,7 @@ SceneJS._webgl.ArrayBuffer = function (gl, type, values, numItems, itemSize, usa
     this.numItems = numItems;
     this.itemSize = itemSize;
     this.usage = usage;
+    this.normalize = !!normalize;
     this._allocate(values, numItems);
 };
 
@@ -5938,7 +5939,7 @@ SceneJS._webgl.Attribute = function (gl, program, name, type, size, location) {
         if (buffer) {
             buffer.bind();
             gl.enableVertexAttribArray(location);
-            gl.vertexAttribPointer(location, buffer.itemSize, gl.FLOAT, false, 0, 0);   // Vertices are not homogeneous - no w-element
+            gl.vertexAttribPointer(location, buffer.itemSize, buffer.itemType, false, 0, 0);   // Vertices are not homogeneous - no w-element
         }
     };
 };
@@ -9469,7 +9470,17 @@ new (function () {
         // Create typed arrays, apply any baked transforms
         core.arrays = {};
 
-        if (data.positions) {
+        if (data.quantizedPositions) {
+            if (data.quantizedPositions.constructor != Uint16Array) {
+                data.quantizedPositions = new Uint16Array(data.quantizedPositions);
+            }
+
+            core.arrays.quantizedPositions = data.quantizedPositions;
+            this._engine.stats.memory.quantizedPositions += data.quantizedPositions.length / 3;
+
+            core.decodePositions = data.decodePositions;
+            core.compressed = true;
+        } else if (data.positions) {
             if (data.positions.constructor != Float32Array) {
                 data.positions = new Float32Array(data.positions);
             }
@@ -9482,7 +9493,10 @@ new (function () {
             this._engine.stats.memory.positions += data.positions.length / 3;
         }
 
-        if (data.normals) {
+        if (data.octNormals) {
+
+            core.compressed = true;
+        } else if (data.normals) {
             if (data.normals.constructor != Float32Array) {
                 data.normals = new Float32Array(data.normals);
             }
@@ -9491,7 +9505,10 @@ new (function () {
             this._engine.stats.memory.normals += data.normals.length / 3;
         }
 
-        if (data.uvs) {
+        if (data.quantizedUVs) {
+
+            core.compressed = true;
+        } else if (data.uvs) {
             var uvs = data.uvs;
             var uv;
             for (var i = 0, len = uvs.length; i < len; i++) {
@@ -10203,7 +10220,7 @@ new (function () {
     function buildCore(gl, core) {
         var usage = gl.STATIC_DRAW;
         var arrays = core.arrays;
-        var canInterleave = (SceneJS.getConfigs("enableInterleaving") !== false);
+        var canInterleave = !core.compressed && (SceneJS.getConfigs("enableInterleaving") !== false);
         var dataLength = 0;
         var interleavedValues = 0;
         var interleavedArrays = [];
@@ -10221,21 +10238,27 @@ new (function () {
             return (interleavedValues - strideInElements) * 4;
         };
 
-        if (arrays.positions) {
+        if (arrays.quantizedPositions) {
+            core.vertexBuf = new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, arrays.quantizedPositions, arrays.quantizedPositions.length, 3, usage);
+        } else if (arrays.positions) {
             if (canInterleave) {
                 core.interleavedPositionOffset = prepareInterleaveBuffer(arrays.positions, 3);
             }
             core.vertexBuf = new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, arrays.positions, arrays.positions.length, 3, usage);
         }
 
-        if (arrays.normals) {
+        if (arrays.octNormals) {
+
+        } else if (arrays.normals) {
             if (canInterleave) {
                 core.interleavedNormalOffset = prepareInterleaveBuffer(arrays.normals, 3);
             }
             core.normalBuf = new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, arrays.normals, arrays.normals.length, 3, usage);
         }
 
-        if (arrays.uvs) {
+        if (arrays.quantizedUVs) {
+
+        } else if (arrays.uvs) {
 
             var uvs = arrays.uvs;
             var offsets;
@@ -18663,6 +18686,7 @@ var SceneJS_ProgramSourceFactory = new (function () {
     var regionInteraction;
     var depthTargeting;
     var points;
+    var quantizedPositions;
 
     var src = ""; // Accumulates source code as it's being built
 
@@ -18699,6 +18723,7 @@ var SceneJS_ProgramSourceFactory = new (function () {
         regionInteraction = regionMapping && states.regionMap.mode !== "info";
         depthTargeting = hasDepthTarget();
         points = states.geometry.primitiveName === "points";
+        quantizedPositions = !!states.geometry.decodePositions;
 
         source = new SceneJS_ProgramSource(
             hash,
@@ -18742,6 +18767,10 @@ var SceneJS_ProgramSourceFactory = new (function () {
             add("uniform float SCENEJS_uPointSize;");
         }
 
+        if (quantizedPositions) {
+            add("uniform mat4 SCENEJS_uDecodePositionMatrix;");
+        }
+
         add("varying vec4 SCENEJS_vWorldVertex;");
 
         if (regionMapping) {
@@ -18761,6 +18790,10 @@ var SceneJS_ProgramSourceFactory = new (function () {
         add("void main(void) {");
 
         add("   vec4 tmpVertex=vec4(SCENEJS_aVertex, 1.0); ");
+
+        if (quantizedPositions) {
+            add("    tmpVertex = SCENEJS_uDecodePositionMatrix * tmpVertex;");
+        }
 
         if (morphing) {
             if (states.morphGeometry.targets[0].vertexBuf) {
@@ -18951,6 +18984,10 @@ var SceneJS_ProgramSourceFactory = new (function () {
             add("uniform float SCENEJS_uPointSize;");
         }
 
+        if (quantizedPositions) {
+            add("uniform mat4 SCENEJS_uDecodePositionMatrix;");
+        }
+
         if (normals) {
 
             add("attribute vec3 SCENEJS_aNormal;");        // Normal vectors
@@ -19059,6 +19096,10 @@ var SceneJS_ProgramSourceFactory = new (function () {
         }
 
         add("  vec4 tmpVertex=vec4(SCENEJS_aVertex, 1.0); ");
+
+        if (quantizedPositions) {
+            add("    tmpVertex = SCENEJS_uDecodePositionMatrix * tmpVertex;");
+        }
 
         add("  vec4 modelVertex = tmpVertex; ");
 
@@ -21013,6 +21054,7 @@ SceneJS_ChunkFactory.createChunkType({
         this._aMorphTangentDraw = draw.getAttribute("SCENEJS_aMorphTangent");
         this._uMorphFactorDraw = draw.getUniform("SCENEJS_uMorphFactor");
         this._uPointSizeDraw = draw.getUniform("SCENEJS_uPointSize");
+        this._uDecodePositionsDraw = draw.getUniform("SCENEJS_uDecodePositionMatrix");
 
         var pick = this.program.pick;
 
@@ -21022,6 +21064,7 @@ SceneJS_ChunkFactory.createChunkType({
         this._aMorphVertexPick = pick.getAttribute("SCENEJS_aMorphVertex");
         this._uMorphFactorPick = pick.getUniform("SCENEJS_uMorphFactor");
         this._uPointSizePick = draw.getUniform("SCENEJS_uPointSize");
+        this._uDecodePositionsPick = draw.getUniform("SCENEJS_uDecodePositionMatrix");
 
         this.VAO = null;
         this.VAOMorphKey1 = 0;
@@ -21189,6 +21232,10 @@ SceneJS_ChunkFactory.createChunkType({
                     this._aColorDraw.bindFloatArrayBuffer(this.core2.colorBuf);
                     frameCtx.bindArray++;
                 }
+
+                if (this._uDecodePositionsDraw) {
+                    this._uDecodePositionsDraw.setValue(this.core2.decodePositions);
+                }
             }
 
             if (this._aTangentDraw) {
@@ -21311,6 +21358,10 @@ SceneJS_ChunkFactory.createChunkType({
                     this._aColorPick.bindFloatArrayBuffer(core2.getPickColors());
                 }
 
+            }
+
+            if (this._uDecodePositionsPick) {
+                this._uDecodePositionsPick.setValue(this.core2.decodePositions);
             }
 
             if (this._uPointSizePick) {
