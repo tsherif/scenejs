@@ -9458,6 +9458,9 @@ new (function () {
         core.primitive = this._getPrimitiveType(primitive);
         core.primitiveName = primitive;
         core.pointSize = data.pointSize || 1;
+        core.compressedPositions = false;
+        core.compressedNormals = false;
+        core.compressedUVs = false;
 
         // Generate normals
         if (data.normals) {
@@ -9473,50 +9476,46 @@ new (function () {
         // Create typed arrays, apply any baked transforms
         core.arrays = {};
 
-        if (data.quantizedPositions) {
-            if (data.quantizedPositions.constructor != Uint16Array) {
-                data.quantizedPositions = new Uint16Array(data.quantizedPositions);
+        if (data.positions) {
+            if (data.positions.constructor == Uint16Array && data.positionDecodeMat) {
+                core.arrays.positions = data.positions;
+                this._engine.stats.memory.positions += data.positions.length / 3;
+
+                core.positionDecodeMat = data.positionDecodeMat;
+                core.compressedPositions = true;
+            } else {
+                if (data.positions.constructor != Float32Array) {
+                    data.positions = new Float32Array(data.positions);
+                }
+
+                if (options.scale || options.origin) {
+                    this._applyOptions(data.positions, options)
+                }
+
+                core.arrays.positions = data.positions;
+                this._engine.stats.memory.positions += data.positions.length / 3;
             }
-
-            core.arrays.quantizedPositions = data.quantizedPositions;
-            this._engine.stats.memory.quantizedPositions += data.quantizedPositions.length / 3;
-
-            core.decodePositions = data.decodePositions;
-            core.compressed = true;
-        } else if (data.positions) {
-            if (data.positions.constructor != Float32Array) {
-                data.positions = new Float32Array(data.positions);
-            }
-
-            if (options.scale || options.origin) {
-                this._applyOptions(data.positions, options)
-            }
-
-            core.arrays.positions = data.positions;
-            this._engine.stats.memory.positions += data.positions.length / 3;
         }
 
-        if (data.octNormals) {
-            if (data.octNormals.constructor != Uint16Array) {
-                data.octNormals = new Int8Array(data.octNormals);
+        if (data.normals) {
+            if (data.normals.constructor == Int8Array) {
+                core.arrays.normals = data.normals;
+                this._engine.stats.memory.normals += data.normals.length / 3;
+
+                core.compressedNormals = true;
+            } else {
+                if (data.normals.constructor != Float32Array) {
+                    data.normals = new Float32Array(data.normals);
+                }
+
+                core.arrays.normals = data.normals;
+                this._engine.stats.memory.normals += data.normals.length / 3;
             }
-
-            core.arrays.octNormals = data.octNormals;
-            this._engine.stats.memory.octNormals += data.octNormals.length / 3;
-
-            core.compressed = true;
-        } else if (data.normals) {
-            if (data.normals.constructor != Float32Array) {
-                data.normals = new Float32Array(data.normals);
-            }
-
-            core.arrays.normals = data.normals;
-            this._engine.stats.memory.normals += data.normals.length / 3;
         }
 
         var uvs, uv;
-        if (data.quantizedUVs) {
-            uvs = data.quantizedUVs;
+        if (data.uvDecodeMats) {
+            uvs = data.uvs;
             uv;
             for (var i = 0, len = uvs.length; i < len; i++) {
                 uv = uvs[i];
@@ -9525,9 +9524,9 @@ new (function () {
                 }
                 this._engine.stats.memory.uvs += uv.length / 2;
             }
-            core.arrays.quantizedUVs = uvs;
-            core.decodeUVs = data.decodeUVs;
-            core.compressed = true;
+            core.arrays.uvs = uvs;
+            core.uvDecodeMats = data.uvDecodeMats;
+            core.compressedUVs = true;
         } else if (data.uvs) {
             uvs = data.uvs;
             uv;
@@ -10240,7 +10239,8 @@ new (function () {
     function buildCore(gl, core) {
         var usage = gl.STATIC_DRAW;
         var arrays = core.arrays;
-        var canInterleave = !core.compressed && (SceneJS.getConfigs("enableInterleaving") !== false);
+        var compressed = core.compressedPositions || core.compressedNormals || core.compressedUVs;
+        var canInterleave = !compressed && (SceneJS.getConfigs("enableInterleaving") !== false);
         var dataLength = 0;
         var interleavedValues = 0;
         var interleavedArrays = [];
@@ -10258,18 +10258,16 @@ new (function () {
             return (interleavedValues - strideInElements) * 4;
         };
 
-        if (arrays.quantizedPositions) {
-            core.vertexBuf = new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, arrays.quantizedPositions, arrays.quantizedPositions.length, 3, usage);
-        } else if (arrays.positions) {
+        if (arrays.positions) {
             if (canInterleave) {
                 core.interleavedPositionOffset = prepareInterleaveBuffer(arrays.positions, 3);
             }
             core.vertexBuf = new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, arrays.positions, arrays.positions.length, 3, usage);
         }
 
-        if (arrays.octNormals) {
+        if (core.compressedNormals) {
             // Note: Oct-encoded normal buffer has to be normalized.
-            core.normalBuf = new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, arrays.octNormals, arrays.octNormals.length, 2, usage, true);
+            core.normalBuf = new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, arrays.normals, arrays.normals.length, 2, usage, true);
         } else if (arrays.normals) {
             if (canInterleave) {
                 core.interleavedNormalOffset = prepareInterleaveBuffer(arrays.normals, 3);
@@ -10277,28 +10275,13 @@ new (function () {
             core.normalBuf = new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, arrays.normals, arrays.normals.length, 3, usage);
         }
 
-        var uvs;
-        var offsets;
-        var i;
-        var len;
-        var uv;
+        if (arrays.uvs) {
 
-        if (arrays.quantizedUVs) {
-
-            uvs = arrays.quantizedUVs;
-
-            core.uvBufs = [];
-
-            for (i = 0, len = uvs.length; i < len; i++) {
-                uv = uvs[i];
-                if (uv.length > 0) {
-                    core.uvBufs.push(new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, uv, uv.length, 2, usage));
-                }
-            }
-
-        } else if (arrays.uvs) {
-
-            uvs = arrays.uvs;
+            var uvs = arrays.uvs;
+            var offsets;
+            var i;
+            var len;
+            var uv;
 
             if (canInterleave) {
                 core.interleavedUVOffsets = [];
@@ -18721,6 +18704,8 @@ var SceneJS_ProgramSourceFactory = new (function () {
     var depthTargeting;
     var points;
     var quantizedPositions;
+    var octNormals;
+    var quantizedUVs;
 
     var src = ""; // Accumulates source code as it's being built
 
@@ -18757,9 +18742,9 @@ var SceneJS_ProgramSourceFactory = new (function () {
         regionInteraction = regionMapping && states.regionMap.mode !== "info";
         depthTargeting = hasDepthTarget();
         points = states.geometry.primitiveName === "points";
-        quantizedPositions = !!states.geometry.decodePositions;
-        octNormals = !!states.geometry.arrays.octNormals;
-        quantizedUVs = !!states.geometry.decodeUVs;
+        quantizedPositions = !!states.geometry.compressedPositions;
+        octNormals = !!states.geometry.compressedNormals;
+        quantizedUVs = !!states.geometry.compressedUVs;
 
         source = new SceneJS_ProgramSource(
             hash,
@@ -21205,7 +21190,7 @@ SceneJS_ChunkFactory.createChunkType({
             if (uvBuf) {
                 this._aUVDraw[i].bindFloatArrayBuffer(uvBuf);
                 if (this._uDecodeUV[i]) {
-                    this._uMatLocationDraw.setValue(this.core2.decodeUVs[i]);
+                    this._uMatLocationDraw.setValue(this.core2.uvDecodeMats[i]);
                 }
                 frameCtx.bindArray++;
             }
@@ -21288,7 +21273,7 @@ SceneJS_ChunkFactory.createChunkType({
                     if (uvBuf) {
                         this._aUVDraw[i].bindFloatArrayBuffer(uvBuf);
                         if (this._uDecodeUV[i]) {
-                            this._uDecodeUV[i].setValue(this.core2.decodeUVs[i]);
+                            this._uDecodeUV[i].setValue(this.core2.uvDecodeMats[i]);
                         }
                         frameCtx.bindArray++;
                     }
@@ -21328,7 +21313,7 @@ SceneJS_ChunkFactory.createChunkType({
         }
 
         if (this._uDecodePositionsDraw) {
-            this._uDecodePositionsDraw.setValue(this.core2.decodePositions);
+            this._uDecodePositionsDraw.setValue(this.core2.positionDecodeMat);
         }
 
         if (this.core2.indexBuf) {
@@ -21383,6 +21368,10 @@ SceneJS_ChunkFactory.createChunkType({
             }
         }
 
+        if (this._uDecodePositionsPick) {
+            this._uDecodePositionsPick.setValue(this.core2.positionDecodeMat);
+        }
+
         if (this._uMorphFactorPick) {
             this._uMorphFactorPick.setValue(core.factor);
         }
@@ -21426,7 +21415,7 @@ SceneJS_ChunkFactory.createChunkType({
             }
 
             if (this._uDecodePositionsPick) {
-                this._uDecodePositionsPick.setValue(this.core2.decodePositions);
+                this._uDecodePositionsPick.setValue(this.core2.positionDecodeMat);
             }
 
             if (this._uPointSizePick) {

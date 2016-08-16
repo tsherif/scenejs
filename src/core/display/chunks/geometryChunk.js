@@ -130,7 +130,7 @@ SceneJS_ChunkFactory.createChunkType({
             if (uvBuf) {
                 this._aUVDraw[i].bindFloatArrayBuffer(uvBuf);
                 if (this._uDecodeUV[i]) {
-                    this._uMatLocationDraw.setValue(this.core2.decodeUVs[i]);
+                    this._uMatLocationDraw.setValue(this.core2.uvDecodeMats[i]);
                 }
                 frameCtx.bindArray++;
             }
@@ -213,7 +213,7 @@ SceneJS_ChunkFactory.createChunkType({
                     if (uvBuf) {
                         this._aUVDraw[i].bindFloatArrayBuffer(uvBuf);
                         if (this._uDecodeUV[i]) {
-                            this._uDecodeUV[i].setValue(this.core2.decodeUVs[i]);
+                            this._uDecodeUV[i].setValue(this.core2.uvDecodeMats[i]);
                         }
                         frameCtx.bindArray++;
                     }
@@ -253,7 +253,7 @@ SceneJS_ChunkFactory.createChunkType({
         }
 
         if (this._uDecodePositionsDraw) {
-            this._uDecodePositionsDraw.setValue(this.core2.decodePositions);
+            this._uDecodePositionsDraw.setValue(this.core2.positionDecodeMat);
         }
 
         if (this.core2.indexBuf) {
@@ -308,6 +308,10 @@ SceneJS_ChunkFactory.createChunkType({
             }
         }
 
+        if (this._uDecodePositionsPick) {
+            this._uDecodePositionsPick.setValue(this.core2.positionDecodeMat);
+        }
+
         if (this._uMorphFactorPick) {
             this._uMorphFactorPick.setValue(core.factor);
         }
@@ -351,7 +355,7 @@ SceneJS_ChunkFactory.createChunkType({
             }
 
             if (this._uDecodePositionsPick) {
-                this._uDecodePositionsPick.setValue(this.core2.decodePositions);
+                this._uDecodePositionsPick.setValue(this.core2.positionDecodeMat);
             }
 
             if (this._uPointSizePick) {

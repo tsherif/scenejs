@@ -28,6 +28,8 @@ var SceneJS_ProgramSourceFactory = new (function () {
     var depthTargeting;
     var points;
     var quantizedPositions;
+    var octNormals;
+    var quantizedUVs;
 
     var src = ""; // Accumulates source code as it's being built
 
@@ -64,9 +66,9 @@ var SceneJS_ProgramSourceFactory = new (function () {
         regionInteraction = regionMapping && states.regionMap.mode !== "info";
         depthTargeting = hasDepthTarget();
         points = states.geometry.primitiveName === "points";
-        quantizedPositions = !!states.geometry.decodePositions;
-        octNormals = !!states.geometry.arrays.octNormals;
-        quantizedUVs = !!states.geometry.decodeUVs;
+        quantizedPositions = !!states.geometry.compressedPositions;
+        octNormals = !!states.geometry.compressedNormals;
+        quantizedUVs = !!states.geometry.compressedUVs;
 
         source = new SceneJS_ProgramSource(
             hash,
