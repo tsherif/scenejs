@@ -16,13 +16,18 @@ SceneJS_ChunkFactory.createChunkType({
         // Get attributes for unlimited UV layers
 
         this._aUVDraw = [];
-        var aUV;
+        this._uDecodeUV = [];
+        var aUV, uDecodeUV;
         for (var i = 0; i < 1000; i++) { // Assuming we'll never have more than 1000 UV layers
             aUV = draw.getAttribute("SCENEJS_aUVCoord" + i);
             if (!aUV) {
                 break;
             }
             this._aUVDraw.push(aUV);
+            uDecodeUV = draw.getUniform("SCENEJS_uDecodeUVMatrix" + i);
+            if (uDecodeUV) {
+                this._uDecodeUV.push(uDecodeUV);
+            }
         }
 
         this._aTangentDraw = draw.getAttribute("SCENEJS_aTangent");
@@ -124,6 +129,9 @@ SceneJS_ChunkFactory.createChunkType({
             uvBuf = this.core2.uvBufs[i];
             if (uvBuf) {
                 this._aUVDraw[i].bindFloatArrayBuffer(uvBuf);
+                if (this._uDecodeUV[i]) {
+                    this._uMatLocationDraw.setValue(this.core2.decodeUVs[i]);
+                }
                 frameCtx.bindArray++;
             }
         }
@@ -204,16 +212,15 @@ SceneJS_ChunkFactory.createChunkType({
                     uvBuf = this.core2.uvBufs[i];
                     if (uvBuf) {
                         this._aUVDraw[i].bindFloatArrayBuffer(uvBuf);
+                        if (this._uDecodeUV[i]) {
+                            this._uDecodeUV[i].setValue(this.core2.decodeUVs[i]);
+                        }
                         frameCtx.bindArray++;
                     }
                 }
                 if (this._aColorDraw) {
                     this._aColorDraw.bindFloatArrayBuffer(this.core2.colorBuf);
                     frameCtx.bindArray++;
-                }
-
-                if (this._uDecodePositionsDraw) {
-                    this._uDecodePositionsDraw.setValue(this.core2.decodePositions);
                 }
             }
 
@@ -243,6 +250,10 @@ SceneJS_ChunkFactory.createChunkType({
                     frameCtx.bindArray++;
                 }
             }
+        }
+
+        if (this._uDecodePositionsDraw) {
+            this._uDecodePositionsDraw.setValue(this.core2.decodePositions);
         }
 
         if (this.core2.indexBuf) {

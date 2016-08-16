@@ -14,6 +14,7 @@
         }
     </style>
 
+    <script src="libs/gl-matrix-min.js"></script>
     <script src="../api/latest/scenejs.js"></script>
     <link href="css/styles.css" rel="stylesheet"/>
 
@@ -75,8 +76,104 @@ var positions = [
     5, 5, -5
 ];
 
+/* Normal vectors, one for each vertex
+ */
+var normals = [
+
+    /* v0-v1-v2-v3 front
+     */
+    0, 0, 1,
+    0, 0, 1,
+    0, 0, 1,
+    0, 0, 1,
+
+    /* v0-v3-v4-v5 right
+     */
+    1, 0, 0,
+    1, 0, 0,
+    1, 0, 0,
+    1, 0, 0,
+
+    /* v0-v5-v6-v1 top
+     */
+    0, 1, 0,
+    0, 1, 0,
+    0, 1, 0,
+    0, 1, 0,
+
+    /* v1-v6-v7-v2 left
+     */
+    -1, 0, 0,
+    -1, 0, 0,
+    -1, 0, 0,
+    -1, 0, 0,
+
+    /* v7-v4-v3-v2 bottom
+     */
+    0, -1, 0,
+    0, -1, 0,
+    0, -1, 0,
+    0, -1, 0,
+
+    /* v4-v7-v6-v5 back
+     */
+    0, 0, -1,
+    0, 0, -1,
+    0, 0, -1,
+    0, 0, -1
+];
+
+var uvs = [
+
+    /* v0-v1-v2-v3 front
+     */
+    5, 5,
+    0, 5,
+    0, 0,
+    5, 0,
+
+    /* v0-v3-v4-v5 right
+     */
+    0, 5,
+    0, 0,
+    5, 0,
+    5, 5,
+
+    /* v0-v5-v6-v1 top
+     */
+    5, 0,
+    5, 5,
+    0, 5,
+    0, 0,
+
+    /* v1-v6-v7-v2 left
+     */
+    5, 5,
+    0, 5,
+    0, 0,
+    5, 0,
+
+    /* v7-v4-v3-v2 bottom
+     */
+    0, 0,
+    5, 0,
+    5, 5,
+    0, 5,
+
+    /* v4-v7-v6-v5 back
+     */
+    0, 0,
+    5, 0,
+    5, 5,
+    0, 5
+]
+
 var b = bounds(positions, 3);
-var q = quantizeVec3(positions, b.min, b.max);
+var qPos = quantizeVec3(positions, b.min, b.max);
+var octNormals = octEncode(normals);
+
+var b = bounds(uvs, 2);
+var qUV = quantizeVec2(uvs, b.min, b.max);
 
 // Create scene
 SceneJS.createScene({
@@ -120,103 +217,21 @@ SceneJS.createScene({
 
                             // The vertices - eight for our cube, each
                             // one spanning three array elements for X,Y and Z
-                            quantizedPositions: q.quantized,
-                            decodePositions: q.decode,
+                            quantizedPositions: qPos.quantized,
+                            decodePositions: qPos.decode,
 
-                            /* Normal vectors, one for each vertex
-                             */
-                            normals: [
-
-                                /* v0-v1-v2-v3 front
-                                 */
-                                0, 0, 1,
-                                0, 0, 1,
-                                0, 0, 1,
-                                0, 0, 1,
-
-                                /* v0-v3-v4-v5 right
-                                 */
-                                1, 0, 0,
-                                1, 0, 0,
-                                1, 0, 0,
-                                1, 0, 0,
-
-                                /* v0-v5-v6-v1 top
-                                 */
-                                0, 1, 0,
-                                0, 1, 0,
-                                0, 1, 0,
-                                0, 1, 0,
-
-                                /* v1-v6-v7-v2 left
-                                 */
-                                -1, 0, 0,
-                                -1, 0, 0,
-                                -1, 0, 0,
-                                -1, 0, 0,
-
-                                /* v7-v4-v3-v2 bottom
-                                 */
-                                0, -1, 0,
-                                0, -1, 0,
-                                0, -1, 0,
-                                0, -1, 0,
-
-                                /* v4-v7-v6-v5 back
-                                 */
-                                0, 0, -1,
-                                0, 0, -1,
-                                0, 0, -1,
-                                0, 0, -1
-                            ],
+                            octNormals: octNormals,
 
                             /* 2D texture coordinates corresponding to the
                              * 3D positions defined above - eight for our cube, each
                              * one spaining two array elements for X and Y
                              */
-                            uv: [
+                            quantizedUVs: [
+                                qUV.quantized
+                            ],
 
-                                /* v0-v1-v2-v3 front
-                                 */
-                                5, 5,
-                                0, 5,
-                                0, 0,
-                                5, 0,
-
-                                /* v0-v3-v4-v5 right
-                                 */
-                                0, 5,
-                                0, 0,
-                                5, 0,
-                                5, 5,
-
-                                /* v0-v5-v6-v1 top
-                                 */
-                                5, 0,
-                                5, 5,
-                                0, 5,
-                                0, 0,
-
-                                /* v1-v6-v7-v2 left
-                                 */
-                                5, 5,
-                                0, 5,
-                                0, 0,
-                                5, 0,
-
-                                /* v7-v4-v3-v2 bottom
-                                 */
-                                0, 0,
-                                5, 0,
-                                5, 5,
-                                0, 5,
-
-                                /* v4-v7-v6-v5 back
-                                 */
-                                0, 0,
-                                5, 0,
-                                5, 5,
-                                0, 5
+                            decodeUVs: [
+                                qUV.decode
                             ],
 
                             /* Indices - these organise the
@@ -316,6 +331,135 @@ function quantizeVec3(array, min, max) {
         quantized: quantized,
         decode: decodeMat
     };
+}
+
+function quantizeVec2(array, min, max) {
+    var quantized = new Uint16Array(array.length);
+    var multiplier = new Float32Array([
+        65535 / (max[0] - min[0]),
+        65535 / (max[1] - min[1])
+    ]);
+    var i;
+
+    for (i = 0; i < array.length; i += 2) {
+        quantized[i    ] = Math.floor((array[i    ] - min[0]) * multiplier[0]);
+        quantized[i + 1] = Math.floor((array[i + 1] - min[1]) * multiplier[1]);
+    }
+
+    var decodeMat = mat3.create();
+    var translate = mat3.create();
+    var scale = mat3.create();
+
+    var translate = mat3.translate(translate, translate, min);
+    var scale = mat3.scale(scale, scale, [
+        (max[0] - min[0]) / 65535,
+        (max[1] - min[1]) / 65535
+    ]);
+
+    mat3.mul(decodeMat, translate, scale);
+
+    return {
+        quantized: quantized,
+        decode: decodeMat
+    };
+}
+
+function octEncode(array) {
+    var encoded = new Int8Array(array.length * 2 / 3);
+
+    var oct, dec, best, currentCos, bestCos;
+
+    var i, ei;
+
+    for (i = 0, ei = 0; i < array.length; i += 3, ei += 2) {
+
+        // Test various combinations of ceil and floor
+        // to minimize rounding errors
+        best = oct = octEncodeVec3(array, i, "floor", "floor");
+        dec = octDecodeVec2(oct);
+        currentCos = bestCos = dot(array, i, dec);
+
+        oct = octEncodeVec3(array, i, "ceil", "floor");
+        dec = octDecodeVec2(oct);
+        currentCos = dot(array, i, dec);
+
+        if (currentCos > bestCos) {
+            best = oct;
+            bestCos = currentCos;
+        }
+
+        oct = octEncodeVec3(array, i, "floor", "ceil");
+        dec = octDecodeVec2(oct);
+        currentCos = dot(array, i, dec);
+
+        if (currentCos > bestCos) {
+            best = oct;
+            bestCos = currentCos;
+        }
+
+        oct = octEncodeVec3(array, i, "ceil", "ceil");
+        dec = octDecodeVec2(oct);
+        currentCos = dot(array, i, dec);
+
+        if (currentCos > bestCos) {
+            best = oct;
+            bestCos = currentCos;
+        }
+
+        encoded[ei    ] = best[0];
+        encoded[ei + 1] = best[1];
+    }
+
+    return encoded;
+}
+
+// Oct-encode single normal vector in 2 bytes
+function octEncodeVec3(array, i, xfunc, yfunc) {
+    var x = array[i    ] / (Math.abs(array[i]) + Math.abs(array[i + 1]) + Math.abs(array[i + 2]));
+    var y = array[i + 1] / (Math.abs(array[i]) + Math.abs(array[i + 1]) + Math.abs(array[i + 2]));
+
+    if (array[i + 2] < 0) {
+        var tempx = x;
+        var tempy = y;
+        tempx = (1 - Math.abs(y)) * (x >= 0 ? 1 : -1);
+        tempy = (1 - Math.abs(x)) * (y >= 0 ? 1 : -1);
+        x = tempx;
+        y = tempy;
+    }
+
+    return new Int8Array([
+        Math[xfunc](x * 127.5 + (x < 0 ? -1 : 0)),
+        Math[yfunc](y * 127.5 + (y < 0 ? -1 : 0))
+    ]);
+
+}
+
+// Decode an oct-encoded normal
+function octDecodeVec2(oct) {
+    var x = oct[0];
+    var y = oct[1];
+    x /= x < 0 ? 127 : 128;
+    y /= y < 0 ? 127 : 128;
+
+    var z = 1 - Math.abs(x) - Math.abs(y);
+
+    if (z < 0) {
+        x = (1 - Math.abs(y)) * (x >= 0 ? 1 : -1);
+        y = (1 - Math.abs(x)) * (y >= 0 ? 1 : -1);
+    }
+
+    var length = Math.sqrt(x * x + y * y + z * z);
+
+    return [
+        x / length,
+        y / length,
+        z / length
+    ];
+}
+
+// Dot product of a normal in an array against a candidate decoding
+function dot(array, i, vec3) {
+    return array[i] * vec3[0] + array[i + 1] * vec3[1] + array[i + 2] * vec3[2];
 }
 
 </script>

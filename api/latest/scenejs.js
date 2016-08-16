@@ -4,7 +4,7 @@
  * A WebGL-based 3D scene graph from xeoLabs
  * http://scenejs.org/
  *
- * Built on 2016-08-15
+ * Built on 2016-08-16
  *
  * MIT License
  * Copyright 2016, Lindsay Kay
@@ -5835,8 +5835,11 @@ SceneJS._webgl.ArrayBuffer = function (gl, type, values, numItems, itemSize, usa
     this.allocated = false;
 
     var itemType = values.constructor == Uint8Array   ? gl.UNSIGNED_BYTE :
+                   values.constructor == Int8Array    ? gl.BYTE :
                    values.constructor == Uint16Array  ? gl.UNSIGNED_SHORT :
+                   values.constructor == Int16Array   ? gl.SHORT :
                    values.constructor == Uint32Array  ? gl.UNSIGNED_INT :
+                   values.constructor == Int32Array   ? gl.INT :
                                                         gl.FLOAT;
 
     this.gl = gl;
@@ -5939,7 +5942,7 @@ SceneJS._webgl.Attribute = function (gl, program, name, type, size, location) {
         if (buffer) {
             buffer.bind();
             gl.enableVertexAttribArray(location);
-            gl.vertexAttribPointer(location, buffer.itemSize, buffer.itemType, false, 0, 0);   // Vertices are not homogeneous - no w-element
+            gl.vertexAttribPointer(location, buffer.itemSize, buffer.itemType, buffer.normalize, 0, 0);   // Vertices are not homogeneous - no w-element
         }
     };
 };
@@ -9494,6 +9497,12 @@ new (function () {
         }
 
         if (data.octNormals) {
+            if (data.octNormals.constructor != Uint16Array) {
+                data.octNormals = new Int8Array(data.octNormals);
+            }
+
+            core.arrays.octNormals = data.octNormals;
+            this._engine.stats.memory.octNormals += data.octNormals.length / 3;
 
             core.compressed = true;
         } else if (data.normals) {
@@ -9505,12 +9514,23 @@ new (function () {
             this._engine.stats.memory.normals += data.normals.length / 3;
         }
 
+        var uvs, uv;
         if (data.quantizedUVs) {
-
+            uvs = data.quantizedUVs;
+            uv;
+            for (var i = 0, len = uvs.length; i < len; i++) {
+                uv = uvs[i];
+                if (uv.constructor != Uint16Array) {
+                    uvs[i] = new Uint16Array(uvs[i]);
+                }
+                this._engine.stats.memory.uvs += uv.length / 2;
+            }
+            core.arrays.quantizedUVs = uvs;
+            core.decodeUVs = data.decodeUVs;
             core.compressed = true;
         } else if (data.uvs) {
-            var uvs = data.uvs;
-            var uv;
+            uvs = data.uvs;
+            uv;
             for (var i = 0, len = uvs.length; i < len; i++) {
                 uv = uvs[i];
                 if (uv.constructor != Float32Array) {
@@ -10248,7 +10268,8 @@ new (function () {
         }
 
         if (arrays.octNormals) {
-
+            // Note: Oct-encoded normal buffer has to be normalized.
+            core.normalBuf = new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, arrays.octNormals, arrays.octNormals.length, 2, usage, true);
         } else if (arrays.normals) {
             if (canInterleave) {
                 core.interleavedNormalOffset = prepareInterleaveBuffer(arrays.normals, 3);
@@ -10256,15 +10277,28 @@ new (function () {
             core.normalBuf = new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, arrays.normals, arrays.normals.length, 3, usage);
         }
 
+        var uvs;
+        var offsets;
+        var i;
+        var len;
+        var uv;
+
         if (arrays.quantizedUVs) {
+
+            uvs = arrays.quantizedUVs;
+
+            core.uvBufs = [];
+
+            for (i = 0, len = uvs.length; i < len; i++) {
+                uv = uvs[i];
+                if (uv.length > 0) {
+                    core.uvBufs.push(new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, uv, uv.length, 2, usage));
+                }
+            }
 
         } else if (arrays.uvs) {
 
-            var uvs = arrays.uvs;
-            var offsets;
-            var i;
-            var len;
-            var uv;
+            uvs = arrays.uvs;
 
             if (canInterleave) {
                 core.interleavedUVOffsets = [];
@@ -18724,6 +18758,8 @@ var SceneJS_ProgramSourceFactory = new (function () {
         depthTargeting = hasDepthTarget();
         points = states.geometry.primitiveName === "points";
         quantizedPositions = !!states.geometry.decodePositions;
+        octNormals = !!states.geometry.arrays.octNormals;
+        quantizedUVs = !!states.geometry.decodeUVs;
 
         source = new SceneJS_ProgramSource(
             hash,
@@ -18989,7 +19025,6 @@ var SceneJS_ProgramSourceFactory = new (function () {
         }
 
         if (normals) {
-
             add("attribute vec3 SCENEJS_aNormal;");        // Normal vectors
             add("uniform   mat4 SCENEJS_uMNMatrix;");      // Model normal matrix
             add("uniform   mat4 SCENEJS_uVNMatrix;");      // View normal matrix
@@ -19014,6 +19049,9 @@ var SceneJS_ProgramSourceFactory = new (function () {
                 for (var i = 0, len = uvBufs.length; i < len; i++) {
                     if (uvBufs[i]) {
                         add("attribute vec2 SCENEJS_aUVCoord" + i + ";");
+                        if (quantizedUVs) {
+                            add("uniform mat3 SCENEJS_uDecodeUVMatrix" + i + ";")
+                        }
                     }
                 }
             }
@@ -19089,6 +19127,16 @@ var SceneJS_ProgramSourceFactory = new (function () {
             add("}");
         }
 
+        if (octNormals) {
+            add("vec3 octDecode(vec2 oct) {");
+            add("    vec3 v = vec3(oct.xy, 1.0 - abs(oct.x) - abs(oct.y));");
+            add("    if (v.z < 0.0) {");
+            add("        v.xy = (1.0 - abs(v.yx)) * vec2(v.x >= 0.0 ? 1.0 : -1.0, v.y >= 0.0 ? 1.0 : -1.0);");
+            add("    }");
+            add("    return normalize(v);");
+            add("}");
+        }
+
         add("void main(void) {");
 
         if (tangents) {
@@ -19103,7 +19151,9 @@ var SceneJS_ProgramSourceFactory = new (function () {
 
         add("  vec4 modelVertex = tmpVertex; ");
 
-        if (normals) {
+        if (octNormals) {
+            add("  vec4 modelNormal = vec4(octDecode(SCENEJS_aNormal.xy), 0.0); ");
+        } else if (normals) {
             add("  vec4 modelNormal = vec4(SCENEJS_aNormal, 0.0); ");
         }
 
@@ -19228,7 +19278,11 @@ var SceneJS_ProgramSourceFactory = new (function () {
             if (uvBufs) {
                 for (i = 0, len = uvBufs.length; i < len; i++) {
                     if (uvBufs[i]) {
-                        add("SCENEJS_vUVCoord" + i + " = SCENEJS_aUVCoord" + i + ";");
+                        if (quantizedUVs) {
+                            add("SCENEJS_vUVCoord" + i + " = (SCENEJS_uDecodeUVMatrix" + i + " * vec3(SCENEJS_aUVCoord" + i + ", 1.0)).xy;");
+                        } else {
+                            add("SCENEJS_vUVCoord" + i + " = SCENEJS_aUVCoord" + i + ";");
+                        }
                     }
                 }
             }
@@ -21037,13 +21091,18 @@ SceneJS_ChunkFactory.createChunkType({
         // Get attributes for unlimited UV layers
 
         this._aUVDraw = [];
-        var aUV;
+        this._uDecodeUV = [];
+        var aUV, uDecodeUV;
         for (var i = 0; i < 1000; i++) { // Assuming we'll never have more than 1000 UV layers
             aUV = draw.getAttribute("SCENEJS_aUVCoord" + i);
             if (!aUV) {
                 break;
             }
             this._aUVDraw.push(aUV);
+            uDecodeUV = draw.getUniform("SCENEJS_uDecodeUVMatrix" + i);
+            if (uDecodeUV) {
+                this._uDecodeUV.push(uDecodeUV);
+            }
         }
 
         this._aTangentDraw = draw.getAttribute("SCENEJS_aTangent");
@@ -21145,6 +21204,9 @@ SceneJS_ChunkFactory.createChunkType({
             uvBuf = this.core2.uvBufs[i];
             if (uvBuf) {
                 this._aUVDraw[i].bindFloatArrayBuffer(uvBuf);
+                if (this._uDecodeUV[i]) {
+                    this._uMatLocationDraw.setValue(this.core2.decodeUVs[i]);
+                }
                 frameCtx.bindArray++;
             }
         }
@@ -21225,16 +21287,15 @@ SceneJS_ChunkFactory.createChunkType({
                     uvBuf = this.core2.uvBufs[i];
                     if (uvBuf) {
                         this._aUVDraw[i].bindFloatArrayBuffer(uvBuf);
+                        if (this._uDecodeUV[i]) {
+                            this._uDecodeUV[i].setValue(this.core2.decodeUVs[i]);
+                        }
                         frameCtx.bindArray++;
                     }
                 }
                 if (this._aColorDraw) {
                     this._aColorDraw.bindFloatArrayBuffer(this.core2.colorBuf);
                     frameCtx.bindArray++;
-                }
-
-                if (this._uDecodePositionsDraw) {
-                    this._uDecodePositionsDraw.setValue(this.core2.decodePositions);
                 }
             }
 
@@ -21264,6 +21325,10 @@ SceneJS_ChunkFactory.createChunkType({
                     frameCtx.bindArray++;
                 }
             }
+        }
+
+        if (this._uDecodePositionsDraw) {
+            this._uDecodePositionsDraw.setValue(this.core2.decodePositions);
         }
 
         if (this.core2.indexBuf) {

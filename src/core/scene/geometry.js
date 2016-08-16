@@ -102,6 +102,12 @@ new (function () {
         }
 
         if (data.octNormals) {
+            if (data.octNormals.constructor != Uint16Array) {
+                data.octNormals = new Int8Array(data.octNormals);
+            }
+
+            core.arrays.octNormals = data.octNormals;
+            this._engine.stats.memory.octNormals += data.octNormals.length / 3;
 
             core.compressed = true;
         } else if (data.normals) {
@@ -113,12 +119,23 @@ new (function () {
             this._engine.stats.memory.normals += data.normals.length / 3;
         }
 
+        var uvs, uv;
         if (data.quantizedUVs) {
-
+            uvs = data.quantizedUVs;
+            uv;
+            for (var i = 0, len = uvs.length; i < len; i++) {
+                uv = uvs[i];
+                if (uv.constructor != Uint16Array) {
+                    uvs[i] = new Uint16Array(uvs[i]);
+                }
+                this._engine.stats.memory.uvs += uv.length / 2;
+            }
+            core.arrays.quantizedUVs = uvs;
+            core.decodeUVs = data.decodeUVs;
             core.compressed = true;
         } else if (data.uvs) {
-            var uvs = data.uvs;
-            var uv;
+            uvs = data.uvs;
+            uv;
             for (var i = 0, len = uvs.length; i < len; i++) {
                 uv = uvs[i];
                 if (uv.constructor != Float32Array) {
@@ -856,7 +873,8 @@ new (function () {
         }
 
         if (arrays.octNormals) {
-
+            // Note: Oct-encoded normal buffer has to be normalized.
+            core.normalBuf = new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, arrays.octNormals, arrays.octNormals.length, 2, usage, true);
         } else if (arrays.normals) {
             if (canInterleave) {
                 core.interleavedNormalOffset = prepareInterleaveBuffer(arrays.normals, 3);
@@ -864,15 +882,28 @@ new (function () {
             core.normalBuf = new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, arrays.normals, arrays.normals.length, 3, usage);
         }
 
+        var uvs;
+        var offsets;
+        var i;
+        var len;
+        var uv;
+
         if (arrays.quantizedUVs) {
+
+            uvs = arrays.quantizedUVs;
+
+            core.uvBufs = [];
+
+            for (i = 0, len = uvs.length; i < len; i++) {
+                uv = uvs[i];
+                if (uv.length > 0) {
+                    core.uvBufs.push(new SceneJS._webgl.ArrayBuffer(gl, gl.ARRAY_BUFFER, uv, uv.length, 2, usage));
+                }
+            }
 
         } else if (arrays.uvs) {
 
-            var uvs = arrays.uvs;
-            var offsets;
-            var i;
-            var len;
-            var uv;
+            uvs = arrays.uvs;
 
             if (canInterleave) {
                 core.interleavedUVOffsets = [];

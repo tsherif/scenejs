@@ -65,6 +65,8 @@ var SceneJS_ProgramSourceFactory = new (function () {
         depthTargeting = hasDepthTarget();
         points = states.geometry.primitiveName === "points";
         quantizedPositions = !!states.geometry.decodePositions;
+        octNormals = !!states.geometry.arrays.octNormals;
+        quantizedUVs = !!states.geometry.decodeUVs;
 
         source = new SceneJS_ProgramSource(
             hash,
@@ -330,7 +332,6 @@ var SceneJS_ProgramSourceFactory = new (function () {
         }
 
         if (normals) {
-
             add("attribute vec3 SCENEJS_aNormal;");        // Normal vectors
             add("uniform   mat4 SCENEJS_uMNMatrix;");      // Model normal matrix
             add("uniform   mat4 SCENEJS_uVNMatrix;");      // View normal matrix
@@ -355,6 +356,9 @@ var SceneJS_ProgramSourceFactory = new (function () {
                 for (var i = 0, len = uvBufs.length; i < len; i++) {
                     if (uvBufs[i]) {
                         add("attribute vec2 SCENEJS_aUVCoord" + i + ";");
+                        if (quantizedUVs) {
+                            add("uniform mat3 SCENEJS_uDecodeUVMatrix" + i + ";")
+                        }
                     }
                 }
             }
@@ -430,6 +434,16 @@ var SceneJS_ProgramSourceFactory = new (function () {
             add("}");
         }
 
+        if (octNormals) {
+            add("vec3 octDecode(vec2 oct) {");
+            add("    vec3 v = vec3(oct.xy, 1.0 - abs(oct.x) - abs(oct.y));");
+            add("    if (v.z < 0.0) {");
+            add("        v.xy = (1.0 - abs(v.yx)) * vec2(v.x >= 0.0 ? 1.0 : -1.0, v.y >= 0.0 ? 1.0 : -1.0);");
+            add("    }");
+            add("    return normalize(v);");
+            add("}");
+        }
+
         add("void main(void) {");
 
         if (tangents) {
@@ -444,7 +458,9 @@ var SceneJS_ProgramSourceFactory = new (function () {
 
         add("  vec4 modelVertex = tmpVertex; ");
 
-        if (normals) {
+        if (octNormals) {
+            add("  vec4 modelNormal = vec4(octDecode(SCENEJS_aNormal.xy), 0.0); ");
+        } else if (normals) {
             add("  vec4 modelNormal = vec4(SCENEJS_aNormal, 0.0); ");
         }
 
@@ -569,7 +585,11 @@ var SceneJS_ProgramSourceFactory = new (function () {
             if (uvBufs) {
                 for (i = 0, len = uvBufs.length; i < len; i++) {
                     if (uvBufs[i]) {
-                        add("SCENEJS_vUVCoord" + i + " = SCENEJS_aUVCoord" + i + ";");
+                        if (quantizedUVs) {
+                            add("SCENEJS_vUVCoord" + i + " = (SCENEJS_uDecodeUVMatrix" + i + " * vec3(SCENEJS_aUVCoord" + i + ", 1.0)).xy;");
+                        } else {
+                            add("SCENEJS_vUVCoord" + i + " = SCENEJS_aUVCoord" + i + ";");
+                        }
                     }
                 }
             }
